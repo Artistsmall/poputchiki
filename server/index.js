@@ -161,6 +161,40 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
+  try {
+    const { from, to, departureTime, fromLat, fromLng, toLat, toLng } = req.body || {};
+
+    if (!from || !to || !departureTime) {
+      return res.status(400).json({ message: 'Необходимо указать from, to, departureTime' });
+    }
+
+    const result = await dbRun('rides', {
+      driver_id: req.user.id,
+      from_text: from,
+      to_text: to,
+      departure_time: departureTime,
+      from_lat: fromLat,
+      from_lng: fromLng,
+      to_lat: toLat,
+      to_lng: toLng,
+      created_at: new Date()
+    });
+
+    console.log('Поездка создана:', result);
+    res.status(201).json({ 
+      id: result.lastID,
+      from,
+      to,
+      departureTime,
+      driverName: req.user.name
+    });
+  } catch (err) {
+    console.error('Ошибка создания поездки:', err);
+    res.status(500).json({ message: 'Ошибка создания поездки' });
+  }
+});
+
 app.get('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
   try {
     const ridesRows = await dbAll('rides', { driver_id: req.user.id });
