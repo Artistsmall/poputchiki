@@ -1,13 +1,5 @@
 services:
-  # PostgreSQL база данных (создаем первой!)
-  - type: postgres
-    name: poputchiki-db
-    plan: free
-    ipAllowList: []
-    databaseName: poputchiki
-    user: poputchiki
-    
-  # Веб-сервис (создаем вторым!)
+  # Веб-сервис
   - type: web
     name: poputchiki
     env: node
@@ -21,11 +13,6 @@ services:
         generateValue: true
       - key: PORT
         value: 10000
-      - key: DATABASE_URL
-        fromDatabase:
-          name: poputchiki-db
-          property: connectionString
+      - key: MONGODB_URL
+        sync: false # Будет установлена вручную
     healthCheckPath: /api/health
-    # Добавляем зависимость от базы данных
-    dependsOn:
-      - poputchiki-db

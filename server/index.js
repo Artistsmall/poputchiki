@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { Pool } = require('pg');
+const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -58,110 +58,96 @@ app.options('*', (req, res) => {
 // Статические файлы (frontend)
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Инициализация PostgreSQL БД
+// Инициализация MongoDB
 console.log('=== Проверка переменных окружения ===');
-console.log('DATABASE_URL:', process.env.DATABASE_URL);
+console.log('MONGODB_URL:', process.env.MONGODB_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('JWT_SECRET:', process.env.JWT_SECRET);
 console.log('PORT:', process.env.PORT);
 console.log('isProduction:', isProduction);
 console.log('=====================================');
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki',
-  ssl: isProduction ? { rejectUnauthorized: false } : false
-});
+const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017/poputchiki';
+console.log('Строка подключения MongoDB:', mongoUrl);
 
-console.log('Строка подключения:', process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki');
-
-// Проверка подключения к БД
-pool.on('connect', () => {
-  console.log('✅ PostgreSQL подключена');
-});
-
-pool.on('error', (err) => {
-  console.error('❌ Ошибка PostgreSQL:', err);
-});
+let db;
+let client;
 
 // Функции для работы с БД
-const dbAll = async (sql, params = []) => {
-  const client = await pool.connect();
+const dbAll = async (collection, query = {}) => {
   try {
-    console.log('dbAll SQL:', sql, 'Params:', params);
-    const result = await client.query(sql, params);
-    console.log('dbAll Result:', result.rows.length, 'rows');
-    return result.rows;
-  } finally {
-    client.release();
+    const result = await db.collection(collection).find(query).toArray();
+    console.log(`dbAll ${collection}:`, result.length, 'документов');
+    return result;
+  } catch (err) {
+    console.error('dbAll error:', err);
+    throw err;
   }
 };
 
-const dbGet = async (sql, params = []) => {
-  const client = await pool.connect();
+const dbGet = async (collection, query = {}) => {
   try {
-    console.log('dbGet SQL:', sql, 'Params:', params);
-    const result = await client.query(sql, params);
-    console.log('dbGet Result:', result.rows[0] || 'null');
-    return result.rows[0];
-  } finally {
-    client.release();
+    const result = await db.collection(collection).findOne(query);
+    console.log(`dbGet ${collection}:`, result || 'null');
+    return result;
+  } catch (err) {
+    console.error('dbGet error:', err);
+    throw err;
   }
 };
 
-const dbRun = async (sql, params = []) => {
-  const client = await pool.connect();
+const dbRun = async (collection, data) => {
   try {
-    console.log('dbRun SQL:', sql, 'Params:', params);
-    const result = await client.query(sql, params);
-    const response = { lastID: result.rows[0]?.id || result.rows[0]?.lastid || 1, changes: result.rowCount };
-    console.log('dbRun Result:', response);
+    const result = await db.collection(collection).insertOne(data);
+    const response = { lastID: result.insertedId, changes: 1 };
+    console.log(`dbRun ${collection}:`, response);
     return response;
-  } finally {
-    client.release();
+  } catch (err) {
+    console.error('dbRun error:', err);
+    throw err;
   }
 };
 
-// Инициализация таблиц
+const dbUpdate = async (collection, query, update) => {
+  try {
+    const result = await db.collection(collection).updateOne(query, { $set: update });
+    const response = { changes: result.modifiedCount };
+    console.log(`dbUpdate ${collection}:`, response);
+    return response;
+  } catch (err) {
+    console.error('dbUpdate error:', err);
+    throw err;
+  }
+};
+
+const dbDelete = async (collection, query) => {
+  try {
+    const result = await db.collection(collection).deleteOne(query);
+    const response = { changes: result.deletedCount };
+    console.log(`dbDelete ${collection}:`, response);
+    return response;
+  } catch (err) {
+    console.error('dbDelete error:', err);
+    throw err;
+  }
+};
+
+// Инициализация базы данных
 const initDatabase = async () => {
   try {
-    console.log('🔄 Создание таблиц...');
-    await dbAll(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await dbAll(`
-      CREATE TABLE IF NOT EXISTS rides (
-        id SERIAL PRIMARY KEY,
-        driver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        from_text TEXT NOT NULL,
-        to_text TEXT NOT NULL,
-        departure_time TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await dbAll(`
-      CREATE TABLE IF NOT EXISTS ride_requests (
-        id SERIAL PRIMARY KEY,
-        ride_id INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
-        passenger_name TEXT NOT NULL,
-        from_text TEXT NOT NULL,
-        to_text TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    console.log('🔄 Подключение к MongoDB...');
+    client = new MongoClient(mongoUrl);
+    await client.connect();
+    db = client.db();
     
-    console.log('✅ Таблицы созданы успешно');
+    console.log('✅ MongoDB подключена');
+    
+    // Создаем индексы для уникальных полей
+    await db.collection('users').createIndex({ email: 1 }, { unique: true });
+    console.log('✅ Индексы созданы');
+    
   } catch (err) {
-    console.error('❌ Ошибка создания таблиц:', err);
+    console.error('❌ Ошибка подключения к MongoDB:', err);
     throw err;
   }
 };
