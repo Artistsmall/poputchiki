@@ -59,14 +59,20 @@ app.options('*', (req, res) => {
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Инициализация PostgreSQL БД
-console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ установлена' : '❌ не установлена');
+console.log('=== Проверка переменных окружения ===');
+console.log('DATABASE_URL:', process.env.DATABASE_URL);
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? '✅ установлен' : '❌ не установлен');
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
+console.log('PORT:', process.env.PORT);
+console.log('isProduction:', isProduction);
+console.log('=====================================');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki',
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
+
+console.log('Строка подключения:', process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki');
 
 // Проверка подключения к БД
 pool.on('connect', () => {
