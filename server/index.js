@@ -89,7 +89,7 @@ const dbRun = async (sql, params = []) => {
   const client = await pool.connect();
   try {
     const result = await client.query(sql, params);
-    return { lastID: result.rows[0]?.id || 1, changes: result.rowCount };
+    return { lastID: result.rows[0]?.id || result.rows[0]?.lastid || 1, changes: result.rowCount };
   } finally {
     client.release();
   }
@@ -340,18 +340,18 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ message: 'Роль должна быть driver или passenger' });
     }
 
-    const existing = await dbGet('SELECT id FROM users WHERE email = ?', [email]);
+    const existing = await dbGet('SELECT id FROM users WHERE email = $1', [email]);
     if (existing) {
       return res.status(400).json({ message: 'Пользователь с таким email уже существует' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await dbRun(
-      'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
       [name, email, passwordHash, role]
     );
 
-    const user = { id: result.id, name, email, role };
+    const user = { id: result.lastID, name, email, role };
     const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ token, user });
@@ -370,7 +370,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Необходимо указать email и пароль' });
     }
 
-    const userRow = await dbGet('SELECT * FROM users WHERE email = ?', [email]);
+    const userRow = await dbGet('SELECT * FROM users WHERE email = $1', [email]);
     if (!userRow) {
       return res.status(400).json({ message: 'Неверный email или пароль' });
     }
@@ -409,7 +409,7 @@ app.post('/api/rides', authRequired, requireRole('driver'), async (req, res) => 
     }
 
     const result = await dbRun(
-      'INSERT INTO rides (driver_id, from_text, to_text, departure_time) VALUES (?, ?, ?, ?)',
+      'INSERT INTO rides (driver_id, from_text, to_text, departure_time) VALUES ($1, $2, $3, $4)',
       [req.user.id, from, to, departureTime]
     );
 
@@ -458,7 +458,7 @@ app.delete('/api/rides/:rideId', authRequired, requireRole('driver'), async (req
     }
 
     const rideRow = await dbGet(
-      'SELECT id, driver_id AS driverId FROM rides WHERE id = ?',
+      'SELECT id, driver_id AS driverId FROM rides WHERE id = $1',
       [rideId]
     );
 
@@ -470,7 +470,7 @@ app.delete('/api/rides/:rideId', authRequired, requireRole('driver'), async (req
       return res.status(403).json({ message: 'Вы не являетесь водителем этой поездки' });
     }
 
-    await dbRun('DELETE FROM rides WHERE id = ?', [rideId]);
+    await dbRun('DELETE FROM rides WHERE id = $1', [rideId]);
     delete rideGeometry[rideId];
     res.status(204).end();
   } catch (err) {
@@ -512,7 +512,7 @@ app.get('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
                 to_text AS toText,
                 status
          FROM ride_requests
-         WHERE ride_id = ?
+         WHERE ride_id = $1
          ORDER BY created_at`,
         [ride.id]
       );
@@ -634,8 +634,8 @@ app.get('/api/rides/search', async (req, res) => {
     let excludedRideIds = [];
     if (passengerName) {
       const existingRequests = await dbAll(
-        'SELECT ride_id FROM ride_requests WHERE passenger_name = ? AND status != "rejected"',
-        [passengerName]
+        'SELECT ride_id FROM ride_requests WHERE passenger_name = $1 AND status != $2',
+        [passengerName, 'rejected']
       );
       excludedRideIds = existingRequests.map(req => req.ride_id);
       console.log('Исключенные поездки (уже есть заявки):', excludedRideIds);
@@ -741,8 +741,8 @@ app.post('/api/rides/:rideId/requests', authRequired, async (req, res) => {
 
     // Проверяем, нет ли уже заявки от этого пассажира
     const existingRequest = await dbGet(
-      'SELECT id FROM ride_requests WHERE ride_id = ? AND passenger_name = ? AND status != "rejected"',
-      [rideId, passengerName]
+      'SELECT id FROM ride_requests WHERE ride_id = $1 AND passenger_name = $2 AND status != $3',
+      [rideId, passengerName, 'rejected']
     );
     
     if (existingRequest) {
@@ -751,8 +751,8 @@ app.post('/api/rides/:rideId/requests', authRequired, async (req, res) => {
 
     const result = await dbRun(
       `INSERT INTO ride_requests (ride_id, passenger_name, from_text, to_text, status)
-       VALUES (?, ?, ?, ?, 'pending')`,
-      [rideId, passengerName, from, to]
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [rideId, passengerName, from, to, 'pending']
     );
 
     console.log('Заявка успешно создана:', result);
@@ -796,7 +796,7 @@ app.get('/api/requests/passenger', authRequired, async (req, res) => {
     const requests = await dbAll(
       `SELECT id, ride_id, passenger_name, from_text, to_text, status, created_at
        FROM ride_requests 
-       WHERE passenger_name = ?
+       WHERE passenger_name = $1
        ORDER BY created_at DESC`,
       [passengerName]
     );
@@ -875,7 +875,7 @@ app.post('/api/requests/:requestId/accept', authRequired, requireRole('driver'),
     }
 
     // Просто обновляем статус
-    await dbRun('UPDATE ride_requests SET status = ? WHERE id = ?', ['accepted', requestId]);
+    await dbRun('UPDATE ride_requests SET status = $1 WHERE id = $1', ['accepted', requestId]);
 
     console.log('Заявка принята:', requestId);
     res.json({ 
@@ -918,7 +918,7 @@ app.post('/api/requests/:requestId/reject', authRequired, requireRole('driver'),
       return res.status(400).json({ message: 'Заявка уже обработана' });
     }
 
-    await dbRun('UPDATE ride_requests SET status = ? WHERE id = ?', ['rejected', requestId]);
+    await dbRun('UPDATE ride_requests SET status = $1 WHERE id = $1', ['rejected', requestId]);
 
     res.json({ request: { id: requestRow.id, status: 'rejected' } });
   } catch (err) {
