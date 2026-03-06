@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Попутчики</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <meta name="description" content="Приложение для поиска попутчиков" />
+    <!-- PWA -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <h1>Попутчики</h1>
+        <p class="subtitle">Поездки с попутчиками: водитель и пассажир</p>
+      </header>
+
+      <section id="authSection" class="card auth-section">
+        <div class="auth-header">
+          <div class="auth-title-group">
+            <h2>Аккаунт</h2>
+            <p class="auth-subtitle">Войдите или зарегистрируйтесь, чтобы сохранять поездки</p>
+          </div>
+          <div class="auth-toggle">
+            <button id="authLoginTab" class="auth-tab active" type="button">Вход</button>
+            <button id="authRegisterTab" class="auth-tab" type="button">Регистрация</button>
+          </div>
+        </div>
+
+        <form id="authForm" class="auth-form" autocomplete="off">
+          <div class="field auth-name-field">
+            <label for="authName">Имя</label>
+            <input id="authName" type="text" placeholder="Как к вам обращаться" />
+          </div>
+          <div class="field">
+            <label for="authEmail">Email</label>
+            <input id="authEmail" type="email" required placeholder="you@example.com" />
+          </div>
+          <div class="field">
+            <label for="authPassword">Пароль</label>
+            <input id="authPassword" type="password" required placeholder="Минимум 6 символов" />
+          </div>
+          <div class="field auth-role-field">
+            <label for="authRole">Роль</label>
+            <select id="authRole">
+              <option value="driver">Водитель</option>
+              <option value="passenger">Пассажир</option>
+            </select>
+          </div>
+          <button type="submit" class="primary-btn auth-submit-btn">Продолжить</button>
+        </form>
+
+        <div id="currentUserPanel" class="current-user hidden">
+          <div>
+            <div class="current-user-line">
+              <span id="currentUserName"></span>
+              <span class="current-user-role" id="currentUserRole"></span>
+            </div>
+            <div class="current-user-email" id="currentUserEmail"></div>
+          </div>
+          <button id="logoutBtn" type="button" class="text-btn">Выйти</button>
+        </div>
+      </section>
+
+      <section class="role-switch">
+        <button id="driverModeBtn" class="role-btn active">Я водитель</button>
+        <button id="passengerModeBtn" class="role-btn">Я пассажир</button>
+      </section>
+
+      <main>
+        <section class="card map-section">
+          <h2>Карта маршрута</h2>
+          <p class="muted">
+            Начните вводить адрес в любом поле «Откуда» или «Куда» — вам предложат варианты, и
+            выбранная точка сразу появится на карте. Можно также кликать по карте.
+          </p>
+          <div id="map" class="map"></div>
+        </section>
+
+        <section id="driverSection">
+          <h2>Создать поездку</h2>
+          <form id="driverForm" class="card form">
+            <div class="field">
+              <label for="driverName">Ваше имя</label>
+              <input id="driverName" type="text" required placeholder="Например, Иван" />
+            </div>
+            <div class="field">
+              <label for="driverFrom">Откуда едете</label>
+              <div class="input-with-button">
+                <input id="driverFrom" type="text" required placeholder="Например, Зеленодольск, улица Ленина" />
+                <button type="button" class="map-btn" onclick="openAddressModal('driverFrom')" title="Выбрать на карте">📍</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="driverTo">Куда едете</label>
+              <div class="input-with-button">
+                <input id="driverTo" type="text" required placeholder="Например, Казань, проспект Победы" />
+                <button type="button" class="map-btn" onclick="openAddressModal('driverTo')" title="Выбрать на карте">📍</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="driverTime">Во сколько выезжаете</label>
+              <input id="driverTime" type="datetime-local" required />
+            </div>
+            <button type="submit" class="primary-btn">Создать поездку</button>
+          </form>
+
+          <h2>Мои поездки и заявки пассажиров</h2>
+          <div id="driverRidesList" class="list"></div>
+
+          <h2>Мои заявки как пассажир</h2>
+          <div id="driverRequestsList" class="list"></div>
+        </section>
+
+        <section id="passengerSection" class="hidden">
+          <h2>Найти подходящую поездку</h2>
+          <form id="passengerSearchForm" class="card form">
+            <div class="field">
+              <label for="passengerFrom">Откуда</label>
+              <div class="input-with-button">
+                <input id="passengerFrom" type="text" placeholder="Можно оставить пустым" />
+                <button type="button" class="map-btn" onclick="openAddressModal('passengerFrom')" title="Выбрать на карте">📍</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="passengerTo">Куда</label>
+              <div class="input-with-button">
+                <input id="passengerTo" type="text" placeholder="Направление, куда вы хотите" />
+                <button type="button" class="map-btn" onclick="openAddressModal('passengerTo')" title="Выбрать на карте">📍</button>
+              </div>
+            </div>
+            <button type="submit" class="primary-btn">Найти поездки</button>
+          </form>
+
+          <form id="passengerInfoForm" class="card form">
+            <div class="field">
+              <label for="passengerName">Ваше имя</label>
+              <input id="passengerName" type="text" required placeholder="Например, Мария" />
+            </div>
+            <p class="muted">
+              Откуда и куда вы поедете — берётся из полей сверху и/или с карты.
+            </p>
+          </form>
+
+          <h2>Подходящие поездки</h2>
+          <div id="passengerRidesList" class="list"></div>
+
+          <h2>Ваши заявки</h2>
+          <div id="passengerRequests" class="list"></div>
+        </section>
+      </main>
+
+      <div id="notification" class="notification hidden"></div>
+      
+      <!-- Модальное окно для выбора адреса с Яндекс.Картой -->
+      <div id="addressModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Выберите адрес на карте</h3>
+            <button class="modal-close" onclick="closeAddressModal()">×</button>
+          </div>
+          <div class="modal-body">
+            <div id="addressMap" style="width: 100%; height: 400px; margin-bottom: 15px;"></div>
+            <div class="address-info">
+              <p><strong>Выбранный адрес:</strong> <span id="selectedAddress">-</span></p>
+              <p><strong>Координаты:</strong> <span id="selectedCoords">-</span></p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="secondary-btn" onclick="closeAddressModal()">Отмена</button>
+            <button class="primary-btn" onclick="confirmAddressSelection()">Выбрать этот адрес</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script
+      src="https://api-maps.yandex.ru/2.1/?apikey=c902f149-944d-43ed-adb7-65b3e802c06b&lang=ru_RU"
+      type="text/javascript"
+    ></script>
+    <script src="app.js"></script>
+    
+    <!-- PWA Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then(function(registration) {
+          console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }, function(err) {
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      }
+    </script>
+  </body>
+  </html>
+

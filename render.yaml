@@ -1,0 +1,30 @@
+services:
+  # Веб-сервис
+  - type: web
+    name: poputchiki
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+    
+  # PostgreSQL для надежности (опционально)
+  - type: pserv
+    name: poputchiki-db
+    plan: free
+    env: docker
+    dockerfilePath: ./Dockerfile.postgres
+    envVars:
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+      - key: POSTGRES_USER
+        value: poputchiki
+      - key: POSTGRES_DB
+        value: poputchiki

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Поездок</title>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=c902f149-944d-43ed-adb7-65b3e802c06b&lang=ru_RU" type="text/javascript"></script>
+</head>
+<body>
+    <h1>Отладка поиска поездок</h1>
+    
+    <div>
+        <h3>Тестовые данные в базе:</h3>
+        <ul>
+            <li>Поездка №7: Зеленодольск, лесная улица, 18 → Казань, Товарищеская улица, 30</li>
+            <li>Поездка №8: Зеленодольск → Казань, Товарищеская улица, 30</li>
+        </ul>
+    </div>
+    
+    <div>
+        <h3>Пассажир хочет:</h3>
+        <p>Откуда: Зеленодольск Юности 3</p>
+        <p>Куда: Товарищеская 30</p>
+    </div>
+    
+    <div>
+        <h3>Проверка координат:</h3>
+        <button onclick="testGeocode('Зеленодольск, лесная улица, 18')">Геокодировать поездку №7 (откуда)</button>
+        <button onclick="testGeocode('Казань, Товарищеская улица, 30')">Геокодировать поездку №7 (куда)</button>
+        <br><br>
+        <button onclick="testGeocode('Зеленодольск')">Геокодировать поездку №8 (откуда)</button>
+        <button onclick="testGeocode('Казань, Товарищеская улица, 30')">Геокодировать поездку №8 (куда)</button>
+        <br><br>
+        <button onclick="testGeocode('Зеленодольск Юности 3')">Геокодировать пассажира (откуда)</button>
+        <button onclick="testGeocode('Товарищеская 30')">Геокодировать пассажира (куда)</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        function testGeocode(address) {
+            console.log('Геокодинг адреса:', address);
+            ymaps.geocode(address, { results: 1 }).then((res) => {
+                const obj = res.geoObjects.get(0);
+                if (!obj) {
+                    document.getElementById('results').innerHTML += `<p style="color: red;">Не найдено: ${address}</p>`;
+                    return;
+                }
+                const coords = obj.geometry.getCoordinates();
+                const addressLine = obj.getAddressLine();
+                const result = `${address}: [${coords[0]}, ${coords[1]}] - ${addressLine}`;
+                console.log(result);
+                document.getElementById('results').innerHTML += `<p>${result}</p>`;
+            }).catch((err) => {
+                console.error(`Ошибка геокодинга для "${address}":`, err);
+                document.getElementById('results').innerHTML += `<p style="color: red;">Ошибка: ${address} - ${err.message}</p>`;
+            });
+        }
+        
+        ymaps.ready(() => {
+            console.log('Яндекс.Карты готовы');
+        });
+    </script>
+</body>
+</html>
