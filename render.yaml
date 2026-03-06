@@ -1,5 +1,13 @@
 services:
-  # Веб-сервис
+  # PostgreSQL база данных (создаем первой!)
+  - type: postgres
+    name: poputchiki-db
+    plan: free
+    ipAllowList: []
+    databaseName: poputchiki
+    user: poputchiki
+    
+  # Веб-сервис (создаем вторым!)
   - type: web
     name: poputchiki
     env: node
@@ -18,11 +26,6 @@ services:
           name: poputchiki-db
           property: connectionString
     healthCheckPath: /api/health
-    
-  # PostgreSQL база данных
-  - type: postgres
-    name: poputchiki-db
-    plan: free
-    ipAllowList: []
-    databaseName: poputchiki
-    user: poputchiki
+    # Добавляем зависимость от базы данных
+    dependsOn:
+      - poputchiki-db

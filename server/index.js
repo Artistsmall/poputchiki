@@ -117,39 +117,47 @@ const dbRun = async (sql, params = []) => {
 
 // Инициализация таблиц
 const initDatabase = async () => {
-  await dbAll(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  try {
+    console.log('🔄 Создание таблиц...');
+    await dbAll(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-  await dbAll(`
-    CREATE TABLE IF NOT EXISTS rides (
-      id SERIAL PRIMARY KEY,
-      driver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      from_text TEXT NOT NULL,
-      to_text TEXT NOT NULL,
-      departure_time TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    await dbAll(`
+      CREATE TABLE IF NOT EXISTS rides (
+        id SERIAL PRIMARY KEY,
+        driver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        from_text TEXT NOT NULL,
+        to_text TEXT NOT NULL,
+        departure_time TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-  await dbAll(`
-    CREATE TABLE IF NOT EXISTS ride_requests (
-      id SERIAL PRIMARY KEY,
-      ride_id INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
-      passenger_name TEXT NOT NULL,
-      from_text TEXT NOT NULL,
-      to_text TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    await dbAll(`
+      CREATE TABLE IF NOT EXISTS ride_requests (
+        id SERIAL PRIMARY KEY,
+        ride_id INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
+        passenger_name TEXT NOT NULL,
+        from_text TEXT NOT NULL,
+        to_text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('✅ Таблицы созданы успешно');
+  } catch (err) {
+    console.error('❌ Ошибка создания таблиц:', err);
+    throw err;
+  }
 };
 
 // Инициализируем БД
