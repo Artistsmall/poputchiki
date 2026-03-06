@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -60,75 +60,52 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Инициализация SQLite БД
 const dbPath = path.join(__dirname, 'poputchiki.db');
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
-db.serialize(() => {
-  db.run('PRAGMA foreign_keys = ON');
+// Включаем foreign keys
+db.pragma('foreign_keys = ON');
 
-  db.run(
-    `CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`
+// Создаем таблицы
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  db.run(
-    `CREATE TABLE IF NOT EXISTS rides (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      driver_id INTEGER NOT NULL,
-      from_text TEXT NOT NULL,
-      to_text TEXT NOT NULL,
-      departure_time TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE CASCADE
-    )`
+  CREATE TABLE IF NOT EXISTS rides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id INTEGER NOT NULL,
+    from_text TEXT NOT NULL,
+    to_text TEXT NOT NULL,
+    departure_time TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
-  db.run(
-    `CREATE TABLE IF NOT EXISTS ride_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ride_id INTEGER NOT NULL,
-      passenger_name TEXT NOT NULL,
-      from_text TEXT NOT NULL,
-      to_text TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (ride_id) REFERENCES rides(id) ON DELETE CASCADE
-    )`
-  );
-});
+  CREATE TABLE IF NOT EXISTS ride_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ride_id INTEGER NOT NULL,
+    passenger_name TEXT NOT NULL,
+    from_text TEXT NOT NULL,
+    to_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ride_id) REFERENCES rides(id) ON DELETE CASCADE
+  )
+`);
 
-// Утилиты работы с БД (Promise-обертки)
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve({ id: this.lastID, changes: this.changes });
-    });
-  });
-}
-
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
-
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows);
-    });
-  });
-}
+// Функции для работы с БД
+const dbAll = (sql, params = []) => db.prepare(sql).all(params);
+const dbGet = (sql, params = []) => db.prepare(sql).get(params);
+const dbRun = (sql, params = []) => {
+  const stmt = db.prepare(sql);
+  const result = stmt.run(params);
+  return { lastID: result.lastInsertRowid, changes: result.changes };
+};
 
 // JWT-аутентификация
 function authRequired(req, res, next) {
