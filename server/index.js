@@ -217,9 +217,209 @@ app.get('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
 app.get('/api/requests/passenger', authRequired, async (req, res) => {
   try {
     const requests = await dbAll('ride_requests', { passenger_name: req.user.name });
-    res.json(requests);
+    
+    // Добавляем детали поездок к заявкам
+    const requestsWithRideDetails = [];
+    for (const request of requests) {
+      const ride = await dbGet('rides', { _id: new ObjectId(request.ride_id) });
+      requestsWithRideDetails.push({
+        id: request._id,
+        rideId: request.ride_id,
+        passengerName: request.passenger_name,
+        fromText: request.from_text,
+        toText: request.to_text,
+        status: request.status,
+        createdAt: request.created_at,
+        ride: ride ? {
+          fromText: ride.from_text,
+          toText: ride.to_text,
+          departureTime: ride.departure_time,
+          driverName: ride.driver_id
+        } : null
+      });
+    }
+    
+    res.json(requestsWithRideDetails);
   } catch (err) {
     console.error('Ошибка получения заявок:', err);
+    res.status(500).json({ message: 'Ошибка получения заявок' });
+  }
+});
+
+// Создать заявку на поездку
+app.post('/api/rides/:rideId/requests', authRequired, async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { from, to, passengerName } = req.body || {};
+
+    if (!from || !to || !passengerName) {
+      return res.status(400).json({ message: 'Необходимо указать from, to, passengerName' });
+    }
+
+    // Проверяем существование поездки
+    const ride = await dbGet('rides', { _id: new ObjectId(rideId) });
+    if (!ride) {
+      return res.status(404).json({ message: 'Поездка не найдена' });
+    }
+
+    // Проверяем, нет ли уже заявки
+    const existingRequests = await dbAll('ride_requests', { 
+      ride_id: new ObjectId(rideId), 
+      passenger_name: passengerName
+    });
+    
+    const nonRejectedRequest = existingRequests.find(req => req.status !== 'rejected');
+
+    if (nonRejectedRequest) {
+      return res.status(400).json({ message: 'Вы уже отправили заявку на эту поездку' });
+    }
+
+    const result = await dbRun('ride_requests', {
+      ride_id: new ObjectId(rideId),
+      passenger_name: passengerName,
+      from_text: from,
+      to_text: to,
+      status: 'pending',
+      created_at: new Date()
+    });
+
+    console.log('Заявка создана:', result);
+    res.status(201).json({
+      id: result.lastID,
+      rideId,
+      passengerName,
+      from,
+      to,
+      status: 'pending'
+    });
+  } catch (err) {
+    console.error('Ошибка создания заявки:', err);
+    res.status(500).json({ message: 'Ошибка создания заявки' });
+  }
+});
+
+// Принять заявку
+app.put('/api/requests/:requestId/accept', authRequired, requireRole('driver'), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    // Получаем заявку с деталями поездки
+    const request = await dbGet('ride_requests', { _id: new ObjectId(requestId) });
+    if (!request) {
+      return res.status(404).json({ message: 'Заявка не найдена' });
+    }
+
+    // Получаем поездку для проверки водителя
+    const ride = await dbGet('rides', { _id: new ObjectId(request.ride_id) });
+    if (!ride || ride.driver_id.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Вы не водитель этой поездки' });
+    }
+
+    // Обновляем статус заявки
+    await dbUpdate('ride_requests', 
+      { _id: new ObjectId(requestId) }, 
+      { status: 'accepted' }
+    );
+
+    console.log('Заявка принята:', requestId);
+    res.json({
+      id: requestId,
+      status: 'accepted',
+      passengerName: request.passenger_name
+    });
+  } catch (err) {
+    console.error('Ошибка принятия заявки:', err);
+    res.status(500).json({ message: 'Ошибка принятия заявки' });
+  }
+});
+
+// Отклонить заявку
+app.put('/api/requests/:requestId/reject', authRequired, requireRole('driver'), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    // Получаем заявку с деталями поездки
+    const request = await dbGet('ride_requests', { _id: new ObjectId(requestId) });
+    if (!request) {
+      return res.status(404).json({ message: 'Заявка не найдена' });
+    }
+
+    // Получаем поездку для проверки водителя
+    const ride = await dbGet('rides', { _id: new ObjectId(request.ride_id) });
+    if (!ride || ride.driver_id.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Вы не водитель этой поездки' });
+    }
+
+    // Обновляем статус заявки
+    await dbUpdate('ride_requests', 
+      { _id: new ObjectId(requestId) }, 
+      { status: 'rejected' }
+    );
+
+    console.log('Заявка отклонена:', requestId);
+    res.json({
+      id: requestId,
+      status: 'rejected',
+      passengerName: request.passenger_name
+    });
+  } catch (err) {
+    console.error('Ошибка отклонения заявки:', err);
+    res.status(500).json({ message: 'Ошибка отклонения заявки' });
+  }
+});
+
+// Получить все поездки (для пассажиров)
+app.get('/api/rides/search', authRequired, async (req, res) => {
+  try {
+    const rides = await dbAll('rides', {});
+    
+    const ridesWithDriverName = await Promise.all(rides.map(async (ride) => {
+      const driver = await dbGet('users', { _id: ride.driver_id });
+      return {
+        id: ride._id,
+        fromText: ride.from_text,
+        toText: ride.to_text,
+        departureTime: ride.departure_time,
+        driverName: driver ? driver.name : 'Неизвестно',
+        fromLat: ride.from_lat,
+        fromLng: ride.from_lng,
+        toLat: ride.to_lat,
+        toLng: ride.to_lng
+      };
+    }));
+
+    res.json(ridesWithDriverName);
+  } catch (err) {
+    console.error('Ошибка поиска поездок:', err);
+    res.status(500).json({ message: 'Ошибка поиска поездок' });
+  }
+});
+
+// Получить заявки на поездку (для водителей)
+app.get('/api/rides/:rideId/requests', authRequired, requireRole('driver'), async (req, res) => {
+  try {
+    const { rideId } = req.params;
+
+    // Проверяем, что водитель владеет поездкой
+    const ride = await dbGet('rides', { _id: new ObjectId(rideId) });
+    if (!ride || ride.driver_id.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Вы не водитель этой поездки' });
+    }
+
+    const requests = await dbAll('ride_requests', { ride_id: new ObjectId(rideId) });
+    
+    const normalizedRequests = requests.map(request => ({
+      id: request._id,
+      passengerName: request.passenger_name,
+      fromText: request.from_text,
+      toText: request.to_text,
+      status: request.status,
+      createdAt: request.created_at
+    }));
+
+    res.json(normalizedRequests);
+  } catch (err) {
+    console.error('Ошибка получения заявок на поездку:', err);
     res.status(500).json({ message: 'Ошибка получения заявок' });
   }
 });
