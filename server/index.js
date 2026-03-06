@@ -186,6 +186,8 @@ app.post('/api/rides', authRequired, requireRole('driver'), async (req, res) => 
       id: result.lastID,
       from,
       to,
+      fromText: from,
+      toText: to,
       departureTime,
       driverName: req.user.name
     });
@@ -201,6 +203,8 @@ app.get('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
     
     const ridesWithDriverName = ridesRows.map(ride => ({
       id: ride._id,
+      from: ride.from_text,
+      to: ride.to_text,
       fromText: ride.from_text,
       toText: ride.to_text,
       departureTime: ride.departure_time,
@@ -377,6 +381,8 @@ app.get('/api/rides/search', authRequired, async (req, res) => {
       const driver = await dbGet('users', { _id: ride.driver_id });
       return {
         id: ride._id,
+        from: ride.from_text,
+        to: ride.to_text,
         fromText: ride.from_text,
         toText: ride.to_text,
         departureTime: ride.departure_time,
