@@ -81,6 +81,9 @@ driverModeBtn.addEventListener('click', () => {
 
 passengerModeBtn.addEventListener('click', () => {
   passengerModeBtn.classList.add('active');
+    console.log("Переключение в режим пассажира");
+    console.log("passengerSection:", passengerSection);
+    console.log("passengerSection.classList:", passengerSection?.className);
   driverModeBtn.classList.remove('active');
   passengerSection.classList.remove('hidden');
   driverSection.classList.add('hidden');
@@ -551,6 +554,8 @@ async function loadDriverRides() {
   }
   try {
     const rides = await apiGet('/rides');
+  console.log("Отправка запроса на /rides/search");
+  const rides = await apiGet
     renderDriverRides(rides);
   } catch (e) {
     showNotification(
@@ -682,6 +687,8 @@ function showRequestOnMap(from, to, driverFrom, driverTo) {
 }
 
 async function loadPassengerRides() {
+  console.log("=== loadPassengerRides вызван ===");
+  console.log("currentUser:", currentUser);
   const from = passengerFromInput.value.trim();
   const to = passengerToInput.value.trim();
 
@@ -710,6 +717,8 @@ async function loadPassengerRides() {
   try {
     showNotification('Ищем поездки...', 'info');
     const rides = await apiGet(`/rides/search${query}`);
+  console.log("Отправка запроса на /rides/search");
+  const rides = await apiGet
     console.log('Найдено поездок:', rides.length);
     renderPassengerRides(rides);
     
