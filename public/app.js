@@ -1238,6 +1238,17 @@ function setupFallbackSuggest(input, target) {
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
+
+// Проверяем видимость кнопок карты
+setTimeout(() => {
+  const mapButtons = document.querySelectorAll(".map-btn");
+  console.log("Найдено кнопок карты:", mapButtons.length);
+  mapButtons.forEach((btn, index) => {
+    console.log(`Кнопка ${index}:`, btn);
+    btn.style.display = "flex";
+    btn.style.visibility = "visible";
+  });
+}, 1000);
   setAuthMode('login');
   updateUserPanel();
   
