@@ -98,10 +98,10 @@ function requireRole(role) {
 // Routes
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, email, password, role } = req.body || {};
+    const { name, email, password } = req.body || {};
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ message: 'Необходимо указать имя, email, пароль и роль' });
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Необходимо указать имя, email и пароль' });
     }
 
     const existing = await dbGet('users', { email: email });
@@ -114,11 +114,11 @@ app.post('/api/auth/register', async (req, res) => {
       name: name,
       email: email,
       password_hash: passwordHash,
-      role: role,
+      role: 'user', // По умолчанию пользователь без роли
       created_at: new Date()
     });
 
-    const user = { id: result.lastID, name, email, role };
+    const user = { id: result.lastID, name, email, role: 'user' };
     const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ token, user });
@@ -158,6 +158,115 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error('Ошибка входа:', err);
     res.status(500).json({ message: 'Ошибка входа' });
+  }
+});
+
+// Изменение роли пользователя
+app.put('/api/user/role', authRequired, async (req, res) => {
+  try {
+    const { role } = req.body || {};
+    
+    if (!role || !['driver', 'passenger'].includes(role)) {
+      return res.status(400).json({ message: 'Роль должна быть driver или passenger' });
+    }
+
+    await dbUpdate('users', 
+      { _id: new ObjectId(req.user.id) }, 
+      { role: role }
+    );
+
+    console.log(`Пользователь ${req.user.name} изменил роль на ${role}`);
+    res.json({ message: `Роль изменена на ${role}`, role });
+  } catch (err) {
+    console.error('Ошибка изменения роли:', err);
+    res.status(500).json({ message: 'Ошибка изменения роли' });
+  }
+});
+
+// Добавление рейтинга
+app.post('/api/rides/:rideId/rating', authRequired, async (req, res) => {
+  try {
+    const { rideId } = req.params;
+    const { rating, comment } = req.body || {};
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Рейтинг должен быть от 1 до 5' });
+    }
+
+    // Проверяем, что пользователь участвовал в поездке
+    const request = await dbGet('ride_requests', { 
+      ride_id: new ObjectId(rideId), 
+      passenger_name: req.user.name,
+      status: 'accepted'
+    });
+
+    if (!request) {
+      return res.status(403).json({ message: 'Вы не участвовали в этой поездке' });
+    }
+
+    // Проверяем, что рейтинг еще не оставлен
+    const existingRating = await dbGet('ratings', { 
+      ride_id: new ObjectId(rideId), 
+      passenger_name: req.user.name 
+    });
+
+    if (existingRating) {
+      return res.status(400).json({ message: 'Вы уже оставили рейтинг для этой поездки' });
+    }
+
+    // Получаем информацию о поездке
+    const ride = await dbGet('rides', { _id: new ObjectId(rideId) });
+    if (!ride) {
+      return res.status(404).json({ message: 'Поездка не найдена' });
+    }
+
+    // Сохраняем рейтинг
+    const result = await dbRun('ratings', {
+      ride_id: new ObjectId(rideId),
+      driver_id: ride.driver_id,
+      passenger_name: req.user.name,
+      rating: rating,
+      comment: comment || '',
+      created_at: new Date()
+    });
+
+    console.log(`Рейтинг ${rating} оставлен для водителя поездки ${rideId}`);
+    res.status(201).json({ 
+      message: 'Рейтинг сохранен', 
+      rating,
+      driver_name: ride.driver_id 
+    });
+  } catch (err) {
+    console.error('Ошибка сохранения рейтинга:', err);
+    res.status(500).json({ message: 'Ошибка сохранения рейтинга' });
+  }
+});
+
+// Получение рейтингов водителя
+app.get('/api/user/:userId/ratings', authRequired, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const ratings = await dbAll('ratings', { driver_id: new ObjectId(userId) });
+    
+    // Вычисляем средний рейтинг
+    const averageRating = ratings.length > 0 
+      ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length 
+      : 0;
+
+    res.json({
+      ratings: ratings.map(r => ({
+        rating: r.rating,
+        comment: r.comment,
+        passenger_name: r.passenger_name,
+        created_at: r.created_at
+      })),
+      average_rating: Math.round(averageRating * 10) / 10,
+      total_ratings: ratings.length
+    });
+  } catch (err) {
+    console.error('Ошибка получения рейтингов:', err);
+    res.status(500).json({ message: 'Ошибка получения рейтингов' });
   }
 });
 
@@ -427,6 +536,24 @@ app.get('/api/rides/:rideId/requests', authRequired, requireRole('driver'), asyn
   } catch (err) {
     console.error('Ошибка получения заявок на поездку:', err);
     res.status(500).json({ message: 'Ошибка получения заявок' });
+  }
+});
+
+// Очистка базы данных (только для разработки)
+app.delete('/api/admin/clear-database', async (req, res) => {
+  try {
+    console.log('🗑️ Очистка базы данных...');
+    
+    await db.collection('users').deleteMany({});
+    await db.collection('rides').deleteMany({});
+    await db.collection('ride_requests').deleteMany({});
+    
+    console.log('✅ База данных очищена');
+    
+    res.json({ message: 'База данных очищена' });
+  } catch (err) {
+    console.error('❌ Ошибка очистки:', err);
+    res.status(500).json({ message: 'Ошибка очистки базы данных' });
   }
 });
 

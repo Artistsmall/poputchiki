@@ -45,17 +45,24 @@
             <label for="authPassword">Пароль</label>
             <input id="authPassword" type="password" required placeholder="Минимум 6 символов" />
           </div>
-          <div class="field auth-role-field">
-            <label for="authRole">Роль</label>
-            <select id="authRole">
-              <option value="driver">Водитель</option>
-              <option value="passenger">Пассажир</option>
-            </select>
-          </div>
           <button type="submit" class="primary-btn auth-submit-btn">Продолжить</button>
         </form>
 
         <div id="currentUserPanel" class="current-user hidden">
+
+        <!-- Переключение роли -->
+        <div id="roleSwitchPanel" class="card hidden">
+          <h3>Выберите вашу роль</h3>
+          <p>Вы можете создавать поездки как водитель или искать поездки как пассажир</p>
+          <div class="role-switch-buttons">
+            <button id="becomeDriverBtn" class="secondary-btn">
+              🚗 Стать водителем
+            </button>
+            <button id="becomePassengerBtn" class="secondary-btn">
+              🚶 Стать пассажиром
+            </button>
+          </div>
+        </div>
           <div>
             <div class="current-user-line">
               <span id="currentUserName"></span>
