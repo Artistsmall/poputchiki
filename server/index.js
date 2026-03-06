@@ -59,9 +59,22 @@ app.options('*', (req, res) => {
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Инициализация PostgreSQL БД
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ установлена' : '❌ не установлена');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? '✅ установлен' : '❌ не установлен');
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki',
   ssl: isProduction ? { rejectUnauthorized: false } : false
+});
+
+// Проверка подключения к БД
+pool.on('connect', () => {
+  console.log('✅ PostgreSQL подключена');
+});
+
+pool.on('error', (err) => {
+  console.error('❌ Ошибка PostgreSQL:', err);
 });
 
 // Функции для работы с БД
@@ -787,12 +800,25 @@ app.post('/api/rides/:rideId/requests', authRequired, async (req, res) => {
 });
 
 // Health check для Render
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    // Проверяем подключение к БД
+    const result = await dbAll('SELECT 1 as test');
+    res.json({ 
+      status: 'OK', 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: result.length > 0 ? '✅ подключена' : '❌ ошибка'
+    });
+  } catch (err) {
+    res.json({ 
+      status: 'ERROR', 
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: '❌ ошибка',
+      error: err.message
+    });
+  }
 });
 
 // Тестовый эндпоинт для проверки POST запросов
