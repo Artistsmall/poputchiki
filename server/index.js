@@ -68,7 +68,9 @@ const pool = new Pool({
 const dbAll = async (sql, params = []) => {
   const client = await pool.connect();
   try {
+    console.log('dbAll SQL:', sql, 'Params:', params);
     const result = await client.query(sql, params);
+    console.log('dbAll Result:', result.rows.length, 'rows');
     return result.rows;
   } finally {
     client.release();
@@ -78,7 +80,9 @@ const dbAll = async (sql, params = []) => {
 const dbGet = async (sql, params = []) => {
   const client = await pool.connect();
   try {
+    console.log('dbGet SQL:', sql, 'Params:', params);
     const result = await client.query(sql, params);
+    console.log('dbGet Result:', result.rows[0] || 'null');
     return result.rows[0];
   } finally {
     client.release();
@@ -88,8 +92,11 @@ const dbGet = async (sql, params = []) => {
 const dbRun = async (sql, params = []) => {
   const client = await pool.connect();
   try {
+    console.log('dbRun SQL:', sql, 'Params:', params);
     const result = await client.query(sql, params);
-    return { lastID: result.rows[0]?.id || result.rows[0]?.lastid || 1, changes: result.rowCount };
+    const response = { lastID: result.rows[0]?.id || result.rows[0]?.lastid || 1, changes: result.rowCount };
+    console.log('dbRun Result:', response);
+    return response;
   } finally {
     client.release();
   }
@@ -330,34 +337,44 @@ function distanceKm(lat1, lon1, lat2, lon2) {
 // Регистрация
 app.post('/api/auth/register', async (req, res) => {
   try {
+    console.log('Регистрация запрос:', req.body);
     const { name, email, password, role } = req.body || {};
 
     if (!name || !email || !password || !role) {
+      console.log('Ошибка: не все поля заполнены');
       return res.status(400).json({ message: 'Необходимо указать имя, email, пароль и роль' });
     }
 
     if (!['driver', 'passenger'].includes(role)) {
+      console.log('Ошибка: неверная роль', role);
       return res.status(400).json({ message: 'Роль должна быть driver или passenger' });
     }
 
+    console.log('Проверка существующего пользователя:', email);
     const existing = await dbGet('SELECT id FROM users WHERE email = $1', [email]);
     if (existing) {
+      console.log('Ошибка: пользователь уже существует');
       return res.status(400).json({ message: 'Пользователь с таким email уже существует' });
     }
 
+    console.log('Хеширование пароля...');
     const passwordHash = await bcrypt.hash(password, 10);
+    console.log('Создание пользователя...');
+    
     const result = await dbRun(
       'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
       [name, email, passwordHash, role]
     );
 
+    console.log('Пользователь создан:', result);
     const user = { id: result.lastID, name, email, role };
     const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
 
+    console.log('Регистрация успешна');
     res.status(201).json({ token, user });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Ошибка регистрации' });
+    console.error('Ошибка регистрации:', err);
+    res.status(500).json({ message: 'Ошибка регистрации', error: err.message });
   }
 });
 
