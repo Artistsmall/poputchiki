@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#0ea5e9" />
     <meta name="description" content="Приложение для поиска попутчиков" />
     <!-- PWA -->
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   </head>
@@ -195,7 +195,9 @@
         });
       }
     </script>
-  </body>
   </html>
 
+<script>setTimeout(() => {const btn1=document.createElement("button");btn1.innerHTML="📍";btn1.style="background:#0ea5e9;color:white;border:none;padding:8px;border-radius:6px;cursor:pointer;margin-left:8px;";btn1.onclick=()=>openAddressModal("driverFrom");btn1.title="Выбрать на карте";const input1=document.getElementById("driverFrom");if(input1)input1.parentElement.appendChild(btn1);const btn2=document.createElement("button");btn2.innerHTML="📍";btn2.style="background:#0ea5e9;color:white;border:none;padding:8px;border-radius:6px;cursor:pointer;margin-left:8px;";btn2.onclick=()=>openAddressModal("driverTo");btn2.title="Выбрать на карте";const input2=document.getElementById("driverTo");if(input2)input2.parentElement.appendChild(btn2);console.log("Кнопки карты добавлены");}, 500);</script>
+</body>
+</html>
 <script>setTimeout(() => {const btn1=document.createElement("button");btn1.innerHTML="📍";btn1.style="background:#0ea5e9;color:white;border:none;padding:8px;border-radius:6px;cursor:pointer;margin-left:8px;";btn1.onclick=()=>openAddressModal("driverFrom");btn1.title="Выбрать на карте";const input1=document.getElementById("driverFrom");if(input1)input1.parentElement.appendChild(btn1);const btn2=document.createElement("button");btn2.innerHTML="📍";btn2.style="background:#0ea5e9;color:white;border:none;padding:8px;border-radius:6px;cursor:pointer;margin-left:8px;";btn2.onclick=()=>openAddressModal("driverTo");btn2.title="Выбрать на карте";const input2=document.getElementById("driverTo");if(input2)input2.parentElement.appendChild(btn2);console.log("Кнопки карты добавлены");}, 500);</script>
