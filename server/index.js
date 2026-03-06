@@ -364,7 +364,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     console.log('Проверка существующего пользователя:', email);
-    const existing = await dbGet('SELECT id FROM users WHERE email = $1', [email]);
+    const existing = await dbGet('users', { email: email });
     if (existing) {
       console.log('Ошибка: пользователь уже существует');
       return res.status(400).json({ message: 'Пользователь с таким email уже существует' });
@@ -374,10 +374,13 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     console.log('Создание пользователя...');
     
-    const result = await dbRun(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
-      [name, email, passwordHash, role]
-    );
+    const result = await dbRun('users', {
+      name: name,
+      email: email,
+      password_hash: passwordHash,
+      role: role,
+      created_at: new Date()
+    });
 
     console.log('Пользователь создан:', result);
     const user = { id: result.lastID, name, email, role };
@@ -400,7 +403,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Необходимо указать email и пароль' });
     }
 
-    const userRow = await dbGet('SELECT * FROM users WHERE email = $1', [email]);
+    const userRow = await dbGet('users', { email: email });
     if (!userRow) {
       return res.status(400).json({ message: 'Неверный email или пароль' });
     }
@@ -803,12 +806,13 @@ app.post('/api/rides/:rideId/requests', authRequired, async (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     // Проверяем подключение к БД
-    const result = await dbAll('SELECT 1 as test');
+    const result = await dbAll('users', {}).catch(() => []);
     res.json({ 
       status: 'OK', 
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      database: result.length > 0 ? '✅ подключена' : '❌ ошибка'
+      database: db ? '✅ подключена' : '❌ ошибка',
+      users_count: result.length
     });
   } catch (err) {
     res.json({ 
