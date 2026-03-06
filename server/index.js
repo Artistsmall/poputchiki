@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -58,54 +58,82 @@ app.options('*', (req, res) => {
 // Статические файлы (frontend)
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Инициализация SQLite БД
-const dbPath = path.join(__dirname, 'poputchiki.db');
-const db = new Database(dbPath);
-
-// Включаем foreign keys
-db.pragma('foreign_keys = ON');
-
-// Создаем таблицы
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS rides (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    driver_id INTEGER NOT NULL,
-    from_text TEXT NOT NULL,
-    to_text TEXT NOT NULL,
-    departure_time TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (driver_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE TABLE IF NOT EXISTS ride_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ride_id INTEGER NOT NULL,
-    passenger_name TEXT NOT NULL,
-    from_text TEXT NOT NULL,
-    to_text TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (ride_id) REFERENCES rides(id) ON DELETE CASCADE
-  )
-`);
+// Инициализация PostgreSQL БД
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/poputchiki',
+  ssl: isProduction ? { rejectUnauthorized: false } : false
+});
 
 // Функции для работы с БД
-const dbAll = (sql, params = []) => db.prepare(sql).all(params);
-const dbGet = (sql, params = []) => db.prepare(sql).get(params);
-const dbRun = (sql, params = []) => {
-  const stmt = db.prepare(sql);
-  const result = stmt.run(params);
-  return { lastID: result.lastInsertRowid, changes: result.changes };
+const dbAll = async (sql, params = []) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    return result.rows;
+  } finally {
+    client.release();
+  }
 };
+
+const dbGet = async (sql, params = []) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    return result.rows[0];
+  } finally {
+    client.release();
+  }
+};
+
+const dbRun = async (sql, params = []) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    return { lastID: result.rows[0]?.id || 1, changes: result.rowCount };
+  } finally {
+    client.release();
+  }
+};
+
+// Инициализация таблиц
+const initDatabase = async () => {
+  await dbAll(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('driver','passenger')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await dbAll(`
+    CREATE TABLE IF NOT EXISTS rides (
+      id SERIAL PRIMARY KEY,
+      driver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      from_text TEXT NOT NULL,
+      to_text TEXT NOT NULL,
+      departure_time TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await dbAll(`
+    CREATE TABLE IF NOT EXISTS ride_requests (
+      id SERIAL PRIMARY KEY,
+      ride_id INTEGER NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
+      passenger_name TEXT NOT NULL,
+      from_text TEXT NOT NULL,
+      to_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
+
+// Инициализируем БД
+initDatabase().catch(console.error);
 
 // JWT-аутентификация
 function authRequired(req, res, next) {
