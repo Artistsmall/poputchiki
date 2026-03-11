@@ -20,7 +20,6 @@ const authRegisterTab = document.getElementById('authRegisterTab');
 const authNameInput = document.getElementById('authName');
 const authEmailInput = document.getElementById('authEmail');
 const authPasswordInput = document.getElementById('authPassword');
-const authRoleSelect = document.getElementById('authRole');
 const currentUserPanel = document.getElementById('currentUserPanel');
 const currentUserNameEl = document.getElementById('currentUserName');
 const currentUserRoleEl = document.getElementById('currentUserRole');
@@ -30,6 +29,11 @@ const currentUserEmailEl = document.getElementById('currentUserEmail');
 const driverPanel = document.getElementById('driverSection');
 const passengerPanel = document.getElementById('passengerSection');
 const logoutBtn = document.getElementById('logoutBtn');
+
+// Элементы для новой системы
+const roleSwitchPanel = document.getElementById("roleSwitchPanel");
+const becomeDriverBtn = document.getElementById("becomeDriverBtn");
+const becomePassengerBtn = document.getElementById("becomePassengerBtn");
 
 let authMode = 'login'; // 'login' | 'register'
 let currentUser = null;
@@ -180,12 +184,10 @@ function setAuthMode(mode) {
     authLoginTab.classList.add('active');
     authRegisterTab.classList.remove('active');
     authNameInput.parentElement.classList.add('hidden');
-    authRoleSelect.parentElement.classList.add('hidden');
   } else {
     authRegisterTab.classList.add('active');
     authLoginTab.classList.remove('active');
     authNameInput.parentElement.classList.remove('hidden');
-    authRoleSelect.parentElement.classList.remove('hidden');
   }
 }
 
@@ -207,7 +209,7 @@ authForm.addEventListener('submit', async (e) => {
     let response;
     if (authMode === 'register') {
       const name = authNameInput.value.trim();
-      const role = authRoleSelect.value;
+      const role = "user"; // По умолчанию без роли
       if (!name) {
         showNotification('Введите имя', 'error');
         return;

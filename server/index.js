@@ -242,7 +242,7 @@ app.post('/api/rides/:rideId/rating', authRequired, async (req, res) => {
   }
 });
 
-// Получение рейтингов водителя
+// Получение рейтингов водителя с деталями
 app.get('/api/user/:userId/ratings', authRequired, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -254,7 +254,15 @@ app.get('/api/user/:userId/ratings', authRequired, async (req, res) => {
       ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length 
       : 0;
 
+    // Получаем информацию о водителе
+    const driver = await dbGet('users', { _id: new ObjectId(userId) });
+
     res.json({
+      driver: driver ? {
+        name: driver.name,
+        email: driver.email,
+        member_since: driver.created_at
+      } : null,
       ratings: ratings.map(r => ({
         rating: r.rating,
         comment: r.comment,
@@ -262,13 +270,29 @@ app.get('/api/user/:userId/ratings', authRequired, async (req, res) => {
         created_at: r.created_at
       })),
       average_rating: Math.round(averageRating * 10) / 10,
-      total_ratings: ratings.length
+      total_ratings: ratings.length,
+      trust_score: calculateTrustScore(ratings.length, averageRating)
     });
   } catch (err) {
     console.error('Ошибка получения рейтингов:', err);
     res.status(500).json({ message: 'Ошибка получения рейтингов' });
   }
 });
+
+// Расчет показателя доверия
+function calculateTrustScore(totalRatings, averageRating) {
+  if (totalRatings === 0) return 0;
+  
+  // Базовый рейтинг
+  let score = averageRating * 20;
+  
+  // Бонус за количество оценок
+  if (totalRatings >= 10) score += 10;
+  if (totalRatings >= 25) score += 15;
+  if (totalRatings >= 50) score += 25;
+  
+  return Math.min(100, Math.round(score));
+}
 
 app.post('/api/rides', authRequired, requireRole('driver'), async (req, res) => {
   try {
@@ -481,13 +505,57 @@ app.put('/api/requests/:requestId/reject', authRequired, requireRole('driver'), 
   }
 });
 
-// Получить все поездки (для пассажиров)
+// Получить все поездки (для пассажиров) с улучшенным поиском
 app.get('/api/rides/search', authRequired, async (req, res) => {
   try {
-    const rides = await dbAll('rides', {});
+    const { from, to, date, minRating } = req.query;
     
-    const ridesWithDriverName = await Promise.all(rides.map(async (ride) => {
+    // Базовый фильтр
+    let filter = {};
+    
+    // Фильтр по дате
+    if (date) {
+      const searchDate = new Date(date);
+      const nextDay = new Date(searchDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      filter.departure_time = {
+        $gte: searchDate,
+        $lt: nextDay
+      };
+    }
+    
+    const rides = await dbAll('rides', filter);
+    
+    // Обогащаем поездки данными водителя и рейтингами
+    const enrichedRides = await Promise.all(rides.map(async (ride) => {
       const driver = await dbGet('users', { _id: ride.driver_id });
+      const ratings = await dbAll('ratings', { driver_id: ride.driver_id });
+      
+      const averageRating = ratings.length > 0 
+        ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length 
+        : 0;
+      
+      const trustScore = calculateTrustScore(ratings.length, averageRating);
+      
+      // Фильтрация по рейтингу
+      if (minRating && averageRating < parseFloat(minRating)) {
+        return null;
+      }
+      
+      // Фильтрация по маршруту (простая проверка)
+      let matchesRoute = true;
+      if (from && !ride.from_text.toLowerCase().includes(from.toLowerCase())) {
+        matchesRoute = false;
+      }
+      if (to && !ride.to_text.toLowerCase().includes(to.toLowerCase())) {
+        matchesRoute = false;
+      }
+      
+      if (!matchesRoute) {
+        return null;
+      }
+      
       return {
         id: ride._id,
         from: ride.from_text,
@@ -496,14 +564,34 @@ app.get('/api/rides/search', authRequired, async (req, res) => {
         toText: ride.to_text,
         departureTime: ride.departure_time,
         driverName: driver ? driver.name : 'Неизвестно',
+        driverEmail: driver ? driver.email : null,
         fromLat: ride.from_lat,
         fromLng: ride.from_lng,
         toLat: ride.to_lat,
-        toLng: ride.to_lng
+        toLng: ride.to_lng,
+        average_rating: Math.round(averageRating * 10) / 10,
+        total_ratings: ratings.length,
+        trust_score: trustScore,
+        created_at: ride.created_at
       };
     }));
-
-    res.json(ridesWithDriverName);
+    
+    // Удаляем null значения (отфильтрованные поездки)
+    const filteredRides = enrichedRides.filter(ride => ride !== null);
+    
+    // Сортировка по рейтингу доверия
+    filteredRides.sort((a, b) => b.trust_score - a.trust_score);
+    
+    res.json({
+      rides: filteredRides,
+      total: filteredRides.length,
+      filters: {
+        from,
+        to,
+        date,
+        minRating
+      }
+    });
   } catch (err) {
     console.error('Ошибка поиска поездок:', err);
     res.status(500).json({ message: 'Ошибка поиска поездок' });
@@ -536,6 +624,126 @@ app.get('/api/rides/:rideId/requests', authRequired, requireRole('driver'), asyn
   } catch (err) {
     console.error('Ошибка получения заявок на поездку:', err);
     res.status(500).json({ message: 'Ошибка получения заявок' });
+  }
+});
+
+// Получение статистики платформы
+app.get('/api/stats', authRequired, async (req, res) => {
+  try {
+    // Только для администраторов (пока для всех)
+    const totalUsers = await dbAll('users', {});
+    const totalRides = await dbAll('rides', {});
+    const totalRequests = await dbAll('ride_requests', {});
+    const totalRatings = await dbAll('ratings', {});
+    
+    // Статистика за последние 7 дней
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    const recentRides = await dbAll('rides', {
+      created_at: { $gte: weekAgo }
+    });
+    
+    const recentUsers = await dbAll('users', {
+      created_at: { $gte: weekAgo }
+    });
+    
+    // Активные пользователи (создали поездку или заявку)
+    const activeDrivers = new Set();
+    const activePassengers = new Set();
+    
+    recentRides.forEach(ride => {
+      activeDrivers.add(ride.driver_id.toString());
+    });
+    
+    const recentRequests = await dbAll('ride_requests', {
+      created_at: { $gte: weekAgo }
+    });
+    
+    recentRequests.forEach(request => {
+      activePassengers.add(request.passenger_name);
+    });
+    
+    res.json({
+      overview: {
+        total_users: totalUsers.length,
+        total_rides: totalRides.length,
+        total_requests: totalRequests.length,
+        total_ratings: totalRatings.length
+      },
+      weekly_stats: {
+        new_rides: recentRides.length,
+        new_users: recentUsers.length,
+        active_drivers: activeDrivers.size,
+        active_passengers: activePassengers.size
+      },
+      platform_health: {
+        average_rides_per_user: totalUsers.length > 0 ? (totalRides.length / totalUsers.length).toFixed(2) : 0,
+        request_acceptance_rate: totalRequests.length > 0 ? 
+          ((totalRequests.filter(r => r.status === 'accepted').length / totalRequests.length) * 100).toFixed(1) : 0,
+        average_rating: totalRatings.length > 0 ? 
+          (totalRatings.reduce((sum, r) => sum + r.rating, 0) / totalRatings.length).toFixed(1) : 0
+      }
+    });
+  } catch (err) {
+    console.error('Ошибка получения статистики:', err);
+    res.status(500).json({ message: 'Ошибка получения статистики' });
+  }
+});
+
+// Создание уведомления
+app.post('/api/notifications', authRequired, async (req, res) => {
+  try {
+    const { type, message, recipient_id } = req.body || {};
+    
+    if (!type || !message) {
+      return res.status(400).json({ message: 'Необходимо указать type и message' });
+    }
+    
+    const notification = await dbRun('notifications', {
+      type,
+      message,
+      sender_id: req.user.id,
+      recipient_id: recipient_id || null,
+      created_at: new Date(),
+      read: false
+    });
+    
+    console.log(`Уведомление создано: ${type} от ${req.user.name}`);
+    res.status(201).json({ 
+      message: 'Уведомление создано',
+      notification_id: notification.lastID
+    });
+  } catch (err) {
+    console.error('Ошибка создания уведомления:', err);
+    res.status(500).json({ message: 'Ошибка создания уведомления' });
+  }
+});
+
+// Получение уведомлений пользователя
+app.get('/api/notifications', authRequired, async (req, res) => {
+  try {
+    const notifications = await dbAll('notifications', {
+      $or: [
+        { recipient_id: req.user.id },
+        { recipient_id: null } // Общие уведомления
+      ]
+    });
+    
+    res.json({
+      notifications: notifications.map(n => ({
+        id: n._id,
+        type: n.type,
+        message: n.message,
+        sender_name: n.sender_name,
+        created_at: n.created_at,
+        read: n.read
+      })),
+      unread_count: notifications.filter(n => !n.read).length
+    });
+  } catch (err) {
+    console.error('Ошибка получения уведомлений:', err);
+    res.status(500).json({ message: 'Ошибка получения уведомлений' });
   }
 });
 
