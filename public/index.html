@@ -187,9 +187,30 @@
     </div>
 
     <script
-      src="https://api-maps.yandex.ru/2.1/?apikey=c902f149-944d-43ed-adb7-65b3e802c06b&lang=ru_RU"
+      src="https://api-maps.yandex.ru/2.1/?apikey=c902f149-944d-43ed-adb7-65b3e802c06b&lang=ru_RU&load=package.full"
       type="text/javascript"
     ></script>
+    <script>
+      // Гарантируем загрузку Яндекс.Карт
+      window.onload = function() {
+        if (typeof ymaps !== 'undefined') {
+          ymaps.ready(function() {
+            console.log('🗺️ Яндекс.Карты загружены успешно!');
+          });
+        } else {
+          console.log('❌ Яндекс.Карты не загружены');
+          // Попробуем загрузить снова
+          setTimeout(function() {
+            if (typeof ymaps !== 'undefined') {
+              ymaps.ready(function() {
+                console.log('🗺️ Яндекс.Карты загружены со второй попытки!');
+              });
+            }
+          }, 2000);
+        }
+      };
+    </script>
+    <script src="api-fallback.js"></script>
     <script src="app.js"></script>
     
     <!-- PWA Service Worker -->

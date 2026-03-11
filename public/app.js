@@ -3,6 +3,10 @@ const API_BASE = window.location.hostname === 'localhost'
   ? '/api' 
   : '/.netlify/functions/api';
 
+// Добавляем логирование для отладки
+console.log('🌐 API_BASE установлен:', API_BASE);
+console.log('🌐 Текущий хост:', window.location.hostname);
+
 // Элементы интерфейса
 const driverModeBtn = document.getElementById('driverModeBtn');
 const passengerModeBtn = document.getElementById('passengerModeBtn');
@@ -105,32 +109,14 @@ function getAuthHeaders() {
   };
 }
 
-async function apiGet(path) {
-  const res = await fetch(API_BASE + path, {
-    headers: getAuthHeaders()
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Ошибка запроса: ${res.status}`);
-  }
-  return res.json();
-}
-
-async function apiPost(path, body) {
-  const url = API_BASE + path;
-  const fullUrl = window.location.origin + url;
-  const headers = {
-    'Content-Type': 'application/json',
-    ...getAuthHeaders()
-  };
-  
-  console.log('POST запрос:', url, body);
-  console.log('Полный URL:', fullUrl);
-  console.log('POST заголовки:', headers);
-  
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: headers,
+async function apiGet(endpoint) {
+  try {
+    console.log('🔄 API GET запрос:', API_BASE + endpoint);
+    const response = await fetch(API_BASE + endpoint);
+    
+    if (!response.ok) {
+      console.error('❌ API GET ошибка:', response.status, response.statusText);
+      throw new Error(`HTTP ${response.status}`);
     body: JSON.stringify(body)
   });
   
