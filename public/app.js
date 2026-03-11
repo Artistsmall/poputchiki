@@ -204,10 +204,19 @@ function initAddressMap() {
     ymaps.ready(function() {
       console.log('Яндекс.Карты готовы, создаем карту...');
       
+      // Проверяем доступность API
+      if (!ymaps.geocode) {
+        console.error('Геокодирование недоступно. Проверьте API ключ и ограничения.');
+        showNotification('Ошибка: геокодирование недоступно. Проверьте настройки API ключа.', 'error');
+        return;
+      }
+      
       addressMap = new ymaps.Map(addressMapContainer, {
         center: [55.7963, 49.1088], // Казань
         zoom: 12,
-        controls: ['zoomControl', 'searchControl', 'typeSelector']
+        controls: ['zoomControl', 'searchControl', 'typeSelector'],
+        // Устанавливаем ограничения для API ключа
+        restrictMapArea: [[40.0, 20.0], [70.0, 170.0]] // Россия и СНГ
       });
 
       ymap = addressMap;
@@ -218,7 +227,10 @@ function initAddressMap() {
         console.log('Кликнули по карте, координаты:', coords);
         
         // Геокодируем координаты в адрес
-        ymaps.geocode(coords).then(function(res) {
+        ymaps.geocode(coords, {
+          results: 1,
+          kind: 'house'
+        }).then(function(res) {
           const firstGeoObject = res.geoObjects.get(0);
           const address = firstGeoObject ? firstGeoObject.getAddressLine() : 'Адрес не определен';
           
@@ -232,6 +244,9 @@ function initAddressMap() {
           
           // Показываем информацию о выбранном адресе
           showAddressInfo(address);
+        }).catch(function(error) {
+          console.error('Ошибка геокодирования:', error);
+          showNotification('Не удалось определить адрес. Попробуйте выбрать другое место.', 'error');
         });
       });
 
@@ -239,7 +254,12 @@ function initAddressMap() {
     });
   } catch (error) {
     console.error('Ошибка при инициализации карты:', error);
-    showNotification('Не удалось загрузить карту. Проверьте подключение к интернету.', 'error');
+    
+    if (error.message && error.message.includes('api-maps.yandex.ru')) {
+      showNotification('Ошибка загрузки Яндекс.Карт. Проверьте API ключ и ограничения доступа.', 'error');
+    } else {
+      showNotification('Не удалось загрузить карту. Проверьте подключение к интернету.', 'error');
+    }
   }
 }
 
