@@ -431,6 +431,13 @@ function renderPassengerRides(rides) {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM загружен, инициализация приложения...');
   
+  // Предотвращаем двойную инициализацию
+  if (window.appInitialized) {
+    console.log('Приложение уже инициализировано, пропускаем...');
+    return;
+  }
+  window.appInitialized = true;
+  
   // Проверяем, есть ли сохраненный токен
   const token = localStorage.getItem('token');
   const savedUser = localStorage.getItem('currentUser');
@@ -630,15 +637,25 @@ async function loadDriverRides() {
   if (!currentUser || currentUser.role !== 'driver') {
     return;
   }
+  
+  // Предотвращаем параллельные вызовы
+  if (window.isLoadingDriverRides) {
+    console.log('Загрузка поездок водителя уже выполняется...');
+    return;
+  }
+  window.isLoadingDriverRides = true;
+  
   try {
     console.log("Отправка запроса на /rides");
-    const rides = await apiGet('/rides');
-    renderDriverRides(rides);
+    const driverRides = await apiGet('/rides');
+    renderDriverRides(driverRides);
   } catch (e) {
     showNotification(
       `Не удалось загрузить список поездок: ${e.message || 'ошибка запроса'}`,
       'error'
     );
+  } finally {
+    window.isLoadingDriverRides = false;
   }
 }
 
@@ -646,6 +663,13 @@ async function loadPassengerRides() {
   if (!currentUser || currentUser.role !== 'passenger') {
     return;
   }
+  
+  // Предотвращаем параллельные вызовы
+  if (window.isLoadingPassengerRides) {
+    console.log('Загрузка поездок пассажира уже выполняется...');
+    return;
+  }
+  window.isLoadingPassengerRides = true;
   
   const from = passengerFromInput.value.trim();
   const to = passengerToInput.value.trim();
@@ -689,6 +713,8 @@ async function loadPassengerRides() {
       `Не удалось загрузить поездки: ${e.message || 'ошибка запроса'}`,
       'error'
     );
+  } finally {
+    window.isLoadingPassengerRides = false;
   }
 }
 
