@@ -7,6 +7,27 @@ const API_BASE = window.location.hostname === 'localhost'
 console.log('🌐 API_BASE установлен:', API_BASE);
 console.log('🌐 Текущий хост:', window.location.hostname);
 
+// Глобальные переменные
+let currentUser = null;
+let currentAddressTarget = null;
+let selectedAddressData = null;
+let addressMap = null;
+let ymap = null;
+let coordsState = {
+  driverFrom: null,
+  driverTo: null,
+  passengerFrom: null,
+  passengerTo: null
+};
+
+// Предотвращаем двойную инициализацию
+if (window.appInitialized) {
+  console.log('⚠️ Приложение уже инициализировано!');
+} else {
+  console.log('🚀 Начинаем инициализацию приложения...');
+  window.appInitialized = false;
+}
+
 // API функции с fallback для Netlify
 async function apiGet(endpoint) {
   try {
@@ -111,19 +132,6 @@ function getAuthHeaders() {
     Authorization: `Bearer ${token}`
   };
 }
-
-// Глобальные переменные
-let currentUser = null;
-let currentAddressTarget = null;
-let selectedAddressData = null;
-let addressMap = null;
-let ymap = null;
-let coordsState = {
-  driverFrom: null,
-  driverTo: null,
-  passengerFrom: null,
-  passengerTo: null
-};
 
 // Элементы интерфейса
 const driverModeBtn = document.getElementById('driverModeBtn');
@@ -371,15 +379,15 @@ function updateUserInfo() {
 }
 
 // Функции для работы с поездками
-function renderDriverRides(rides) {
+function renderDriverRides(driverRidesList) {
   driverRidesList.innerHTML = '';
   
-  if (rides.length === 0) {
+  if (driverRidesList.length === 0) {
     driverRidesList.innerHTML = '<p>У вас пока нет поездок</p>';
     return;
   }
   
-  rides.forEach(ride => {
+  driverRidesList.forEach(ride => {
     const rideElement = document.createElement('div');
     rideElement.className = 'ride';
     rideElement.innerHTML = `
@@ -399,15 +407,15 @@ function renderDriverRides(rides) {
   });
 }
 
-function renderPassengerRides(rides) {
+function renderPassengerRides(passengerRidesList) {
   passengerRidesList.innerHTML = '';
   
-  if (rides.length === 0) {
+  if (passengerRidesList.length === 0) {
     passengerRidesList.innerHTML = '<p>Поездок не найдено</p>';
     return;
   }
   
-  rides.forEach(ride => {
+  passengerRidesList.forEach(ride => {
     const rideElement = document.createElement('div');
     rideElement.className = 'ride';
     rideElement.innerHTML = `
@@ -425,6 +433,187 @@ function renderPassengerRides(rides) {
     `;
     passengerRidesList.appendChild(rideElement);
   });
+}
+
+// Функция для создания мобильных кнопок карты
+function createMobileMapButtons() {
+  const inputs = [
+    { id: 'driverFrom', label: 'Откуда' },
+    { id: 'driverTo', label: 'Куда' },
+    { id: 'passengerFrom', label: 'Откуда' },
+    { id: 'passengerTo', label: 'Куда' }
+  ];
+
+  inputs.forEach(input => {
+    const inputElement = document.getElementById(input.id);
+    if (inputElement && !inputElement.nextElementSibling?.classList.contains('map-btn')) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'map-btn';
+      button.innerHTML = '🗺️';
+      button.title = `Выбрать ${input.label} на карте`;
+      button.style.cssText = `
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #0ea5e9;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        width: 40px;
+        height: 40px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        z-index: 10;
+      `;
+      
+      button.addEventListener('click', () => {
+        openAddressModal(input.id);
+      });
+      
+      inputElement.parentElement.style.position = 'relative';
+      inputElement.parentElement.appendChild(button);
+      
+      console.log(`Кнопка ${input.id} создана`);
+    }
+  });
+  
+  console.log('Мобильные кнопки исправлены');
+}
+
+// Функции для загрузки данных
+async function loadDriverRides() {
+  if (!currentUser || currentUser.role !== 'driver') {
+    return;
+  }
+  
+  // Предотвращаем параллельные вызовы
+  if (window.isLoadingDriverRides) {
+    console.log('Загрузка поездок водителя уже выполняется...');
+    return;
+  }
+  window.isLoadingDriverRides = true;
+  
+  try {
+    console.log("Отправка запроса на /rides");
+    const driverRidesData = await apiGet('/rides');
+    renderDriverRides(driverRidesData);
+  } catch (e) {
+    showNotification(
+      `Не удалось загрузить список поездок: ${e.message || 'ошибка запроса'}`,
+      'error'
+    );
+  } finally {
+    window.isLoadingDriverRides = false;
+  }
+}
+
+async function loadPassengerRides() {
+  if (!currentUser || currentUser.role !== 'passenger') {
+    return;
+  }
+  
+  // Предотвращаем параллельные вызовы
+  if (window.isLoadingPassengerRides) {
+    console.log('Загрузка поездок пассажира уже выполняется...');
+    return;
+  }
+  window.isLoadingPassengerRides = true;
+  
+  const from = passengerFromInput.value.trim();
+  const to = passengerToInput.value.trim();
+  const departureTime = passengerTimeInput.value;
+  
+  const params = new URLSearchParams();
+  if (from) params.append('from', from);
+  if (to) params.append('to', to);
+  if (departureTime) params.append('departureTime', departureTime);
+  if (coordsState.passengerFrom) {
+    params.append('fromLat', coordsState.passengerFrom.lat);
+    params.append('fromLng', coordsState.passengerFrom.lng);
+  }
+  if (coordsState.passengerTo) {
+    params.append('toLat', coordsState.passengerTo.lat);
+    params.append('toLng', coordsState.passengerTo.lng);
+  }
+
+  const query = params.toString() ? `?${params.toString()}` : '';
+  console.log('Запрос на сервер:', `/rides/search${query}`);
+
+  try {
+    showNotification('Ищем поездки...', 'info');
+    console.log("Отправка запроса на /rides/search");
+    const passengerRidesData = await apiGet(`/rides/search${query}`);
+    console.log('Найдено поездок:', passengerRidesData.length);
+    renderPassengerRides(passengerRidesData);
+    
+    if (passengerRidesData.length === 0) {
+      if (from || to) {
+        showNotification('Поездок по заданному направлению не найдено. Попробуйте другие параметры.', 'info');
+      } else {
+        showNotification('Нет доступных поездок. Попробуйте позже или создайте поездку как водитель.', 'info');
+      }
+    } else {
+      const searchParams = (from || to) ? `по запросу "${from || ''} → ${to || ''}"` : 'все доступные';
+      showNotification(`Найдено поездок (${searchParams}): ${passengerRidesData.length}`, 'success');
+    }
+  } catch (e) {
+    showNotification(
+      `Не удалось загрузить поездки: ${e.message || 'ошибка запроса'}`,
+      'error'
+    );
+  } finally {
+    window.isLoadingPassengerRides = false;
+  }
+}
+
+// Функции для работы с поездками
+async function deleteRide(rideId) {
+  if (!confirm('Вы уверены, что хотите удалить эту поездку?')) {
+    return;
+  }
+
+  try {
+    await apiDelete(`/rides/${rideId}`);
+    showNotification('Поездка удалена', 'success');
+    await loadDriverRides();
+  } catch (error) {
+    showNotification(error.message || 'Ошибка удаления поездки', 'error');
+  }
+}
+
+async function requestRide(rideId) {
+  try {
+    await apiPost(`/rides/${rideId}/request`, {});
+    showNotification('Заявка отправлена', 'success');
+  } catch (error) {
+    showNotification(error.message || 'Ошибка отправки заявки', 'error');
+  }
+}
+
+async function apiDelete(endpoint) {
+  try {
+    console.log('🔄 API DELETE запрос:', API_BASE + endpoint);
+    const response = await fetch(API_BASE + endpoint, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    
+    if (!response.ok) {
+      console.error('❌ API DELETE ошибка:', response.status, response.statusText);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    console.log('✅ API DELETE успешен');
+    return;
+  } catch (error) {
+    console.error('❌ API DELETE ошибка:', error);
+    throw error;
+  }
 }
 
 // Обработчики событий
@@ -581,186 +770,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   console.log('Приложение инициализировано');
 });
-
-// Функция для создания мобильных кнопок карты
-function createMobileMapButtons() {
-  const inputs = [
-    { id: 'driverFrom', label: 'Откуда' },
-    { id: 'driverTo', label: 'Куда' },
-    { id: 'passengerFrom', label: 'Откуда' },
-    { id: 'passengerTo', label: 'Куда' }
-  ];
-
-  inputs.forEach(input => {
-    const inputElement = document.getElementById(input.id);
-    if (inputElement && !inputElement.nextElementSibling?.classList.contains('map-btn')) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'map-btn';
-      button.innerHTML = '🗺️';
-      button.title = `Выбрать ${input.label} на карте`;
-      button.style.cssText = `
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: #0ea5e9;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        width: 40px;
-        height: 40px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        z-index: 10;
-      `;
-      
-      button.addEventListener('click', () => {
-        openAddressModal(input.id);
-      });
-      
-      inputElement.parentElement.style.position = 'relative';
-      inputElement.parentElement.appendChild(button);
-      
-      console.log(`Кнопка ${input.id} создана`);
-    }
-  });
-  
-  console.log('Мобильные кнопки исправлены');
-}
-
-// Функции для загрузки данных
-async function loadDriverRides() {
-  if (!currentUser || currentUser.role !== 'driver') {
-    return;
-  }
-  
-  // Предотвращаем параллельные вызовы
-  if (window.isLoadingDriverRides) {
-    console.log('Загрузка поездок водителя уже выполняется...');
-    return;
-  }
-  window.isLoadingDriverRides = true;
-  
-  try {
-    console.log("Отправка запроса на /rides");
-    const driverRides = await apiGet('/rides');
-    renderDriverRides(driverRides);
-  } catch (e) {
-    showNotification(
-      `Не удалось загрузить список поездок: ${e.message || 'ошибка запроса'}`,
-      'error'
-    );
-  } finally {
-    window.isLoadingDriverRides = false;
-  }
-}
-
-async function loadPassengerRides() {
-  if (!currentUser || currentUser.role !== 'passenger') {
-    return;
-  }
-  
-  // Предотвращаем параллельные вызовы
-  if (window.isLoadingPassengerRides) {
-    console.log('Загрузка поездок пассажира уже выполняется...');
-    return;
-  }
-  window.isLoadingPassengerRides = true;
-  
-  const from = passengerFromInput.value.trim();
-  const to = passengerToInput.value.trim();
-  const departureTime = passengerTimeInput.value;
-  
-  const params = new URLSearchParams();
-  if (from) params.append('from', from);
-  if (to) params.append('to', to);
-  if (departureTime) params.append('departureTime', departureTime);
-  if (coordsState.passengerFrom) {
-    params.append('fromLat', coordsState.passengerFrom.lat);
-    params.append('fromLng', coordsState.passengerFrom.lng);
-  }
-  if (coordsState.passengerTo) {
-    params.append('toLat', coordsState.passengerTo.lat);
-    params.append('toLng', coordsState.passengerTo.lng);
-  }
-
-  const query = params.toString() ? `?${params.toString()}` : '';
-  console.log('Запрос на сервер:', `/rides/search${query}`);
-
-  try {
-    showNotification('Ищем поездки...', 'info');
-    console.log("Отправка запроса на /rides/search");
-    const foundRides = await apiGet(`/rides/search${query}`);
-    console.log('Найдено поездок:', foundRides.length);
-    renderPassengerRides(foundRides);
-    
-    if (foundRides.length === 0) {
-      if (from || to) {
-        showNotification('Поездок по заданному направлению не найдено. Попробуйте другие параметры.', 'info');
-      } else {
-        showNotification('Нет доступных поездок. Попробуйте позже или создайте поездку как водитель.', 'info');
-      }
-    } else {
-      const searchParams = (from || to) ? `по запросу "${from || ''} → ${to || ''}"` : 'все доступные';
-      showNotification(`Найдено поездок (${searchParams}): ${foundRides.length}`, 'success');
-    }
-  } catch (e) {
-    showNotification(
-      `Не удалось загрузить поездки: ${e.message || 'ошибка запроса'}`,
-      'error'
-    );
-  } finally {
-    window.isLoadingPassengerRides = false;
-  }
-}
-
-// Функции для работы с поездками
-async function deleteRide(rideId) {
-  if (!confirm('Вы уверены, что хотите удалить эту поездку?')) {
-    return;
-  }
-
-  try {
-    await apiDelete(`/rides/${rideId}`);
-    showNotification('Поездка удалена', 'success');
-    await loadDriverRides();
-  } catch (error) {
-    showNotification(error.message || 'Ошибка удаления поездки', 'error');
-  }
-}
-
-async function requestRide(rideId) {
-  try {
-    await apiPost(`/rides/${rideId}/request`, {});
-    showNotification('Заявка отправлена', 'success');
-  } catch (error) {
-    showNotification(error.message || 'Ошибка отправки заявки', 'error');
-  }
-}
-
-async function apiDelete(endpoint) {
-  try {
-    console.log('🔄 API DELETE запрос:', API_BASE + endpoint);
-    const response = await fetch(API_BASE + endpoint, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-    
-    if (!response.ok) {
-      console.error('❌ API DELETE ошибка:', response.status, response.statusText);
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    console.log('✅ API DELETE успешен');
-    return;
-  } catch (error) {
-    console.error('❌ API DELETE ошибка:', error);
-    throw error;
-  }
-}
 
 console.log('🚀 Приложение Попутчиков загружено!');
