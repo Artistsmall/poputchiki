@@ -1,4 +1,7 @@
-const API_BASE = '/api';
+// Определяем базовый URL API в зависимости от окружения
+const API_BASE = window.location.hostname === 'localhost' 
+  ? '/api' 
+  : '/.netlify/functions/api';
 
 // Элементы интерфейса
 const driverModeBtn = document.getElementById('driverModeBtn');

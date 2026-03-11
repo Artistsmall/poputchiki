@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // MongoDB connection
-const mongoUrl = process.env.MONGODB_URL;
+const mongoUrl = process.env.MONGODB_URL || 'mongodb+srv://user:password@cluster.mongodb.net/poputchiki';
 let db;
 let client;
 
@@ -76,7 +76,8 @@ function authRequired(handler) {
     if (!token) {
       return {
         statusCode: 401,
-        body: { message: 'Требуется авторизация' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Требуется авторизация' })
       };
     }
 
@@ -87,7 +88,8 @@ function authRequired(handler) {
     } catch (err) {
       return {
         statusCode: 401,
-        body: { message: 'Неверный токен' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Неверный токен' })
       };
     }
   };
@@ -110,7 +112,8 @@ exports.handler = async (event, context) => {
   if (httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: corsHeaders
+      headers: corsHeaders,
+      body: ''
     };
   }
 
@@ -224,6 +227,128 @@ exports.handler = async (event, context) => {
               users_count: result.length
             })
           };
+
+        case 'user':
+          if (pathParts[2] === 'role') {
+            // Change user role
+            return authRequired(async (event) => {
+              const { role } = requestBody || {};
+              
+              if (!role || !['driver', 'passenger'].includes(role)) {
+                return {
+                  statusCode: 400,
+                  headers: corsHeaders,
+                  body: JSON.stringify({ message: 'Роль должна быть driver или passenger' })
+                };
+              }
+
+              await dbUpdate('users', 
+                { _id: new ObjectId(event.user.id) }, 
+                { role: role }
+              );
+
+              return {
+                statusCode: 200,
+                headers: corsHeaders,
+                body: JSON.stringify({ message: `Роль изменена на ${role}`, role })
+              };
+            })(event, context);
+          }
+          break;
+
+        case 'rides':
+          if (httpMethod === 'GET') {
+            // Get rides
+            return authRequired(async (event) => {
+              const rides = await dbAll('rides', { driver_id: event.user.id });
+              
+              const ridesWithDriverName = rides.map(ride => ({
+                id: ride._id,
+                fromText: ride.from_text,
+                toText: ride.to_text,
+                departureTime: ride.departure_time,
+                driverName: event.user.name
+              }));
+
+              return {
+                statusCode: 200,
+                headers: corsHeaders,
+                body: JSON.stringify(ridesWithDriverName)
+              };
+            })(event, context);
+          }
+          
+          if (httpMethod === 'POST') {
+            // Create ride
+            return authRequired(async (event) => {
+              const { from, to, departureTime, fromLat, fromLng, toLat, toLng } = requestBody || {};
+
+              if (!from || !to || !departureTime) {
+                return {
+                  statusCode: 400,
+                  headers: corsHeaders,
+                  body: JSON.stringify({ message: 'Необходимо указать from, to, departureTime' })
+                };
+              }
+
+              const result = await dbRun('rides', {
+                driver_id: event.user.id,
+                from_text: from,
+                to_text: to,
+                from_lat: fromLat,
+                from_lng: fromLng,
+                to_lat: toLat,
+                to_lng: toLng,
+                departure_time: new Date(departureTime),
+                created_at: new Date()
+              });
+
+              return {
+                statusCode: 201,
+                headers: corsHeaders,
+                body: JSON.stringify({
+                  id: result.lastID,
+                  from,
+                  to,
+                  departureTime,
+                  driverName: event.user.name
+                })
+              };
+            })(event, context);
+          }
+          break;
+
+        case 'rides':
+          if (pathParts[2] === 'search') {
+            // Search rides
+            return authRequired(async (event) => {
+              const rides = await dbAll('rides', {});
+              
+              const ridesWithDriverName = await Promise.all(rides.map(async (ride) => {
+                const driver = await dbGet('users', { _id: ride.driver_id });
+                return {
+                  id: ride._id,
+                  from: ride.from_text,
+                  to: ride.to_text,
+                  fromText: ride.from_text,
+                  toText: ride.to_text,
+                  departureTime: ride.departure_time,
+                  driverName: driver ? driver.name : 'Неизвестно',
+                  fromLat: ride.from_lat,
+                  fromLng: ride.from_lng,
+                  toLat: ride.to_lat,
+                  toLng: ride.to_lng
+                };
+              }));
+
+              return {
+                statusCode: 200,
+                headers: corsHeaders,
+                body: JSON.stringify(ridesWithDriverName)
+              };
+            })(event, context);
+          }
+          break;
 
         default:
           return {
