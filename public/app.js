@@ -650,11 +650,11 @@ async function loadPassengerRides() {
   try {
     showNotification('Ищем поездки...', 'info');
     console.log("Отправка запроса на /rides/search");
-    const rides = await apiGet(`/rides/search${query}`);
-    console.log('Найдено поездок:', rides.length);
-    renderPassengerRides(rides);
+    const foundRides = await apiGet(`/rides/search${query}`);
+    console.log('Найдено поездок:', foundRides.length);
+    renderPassengerRides(foundRides);
     
-    if (rides.length === 0) {
+    if (foundRides.length === 0) {
       if (from || to) {
         showNotification('Поездок по заданному направлению не найдено. Попробуйте другие параметры.', 'info');
       } else {
@@ -662,7 +662,7 @@ async function loadPassengerRides() {
       }
     } else {
       const searchParams = (from || to) ? `по запросу "${from || ''} → ${to || ''}"` : 'все доступные';
-      showNotification(`Найдено поездок (${searchParams}): ${rides.length}`, 'success');
+      showNotification(`Найдено поездок (${searchParams}): ${foundRides.length}`, 'success');
     }
   } catch (e) {
     showNotification(
