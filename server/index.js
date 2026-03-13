@@ -19,7 +19,12 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // MongoDB connection
-const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017/poputchiki';
+// Поддерживаем оба варианта имени переменной окружения:
+// MONGODB_URL (старое) и MONGODB_URI (новое, как в Atlas)
+const mongoUrl =
+  process.env.MONGODB_URL ||
+  process.env.MONGODB_URI ||
+  'mongodb://localhost:27017/poputchiki';
 let db;
 let client;
 
@@ -64,6 +69,21 @@ const dbAll = async (collection, query = {}) => {
     return result;
   } catch (err) {
     console.error('dbAll error:', err);
+    throw err;
+  }
+};
+
+const dbUpdate = async (collection, filter, update) => {
+  try {
+    const result = await db
+      .collection(collection)
+      .updateOne(filter, { $set: update });
+    return {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount
+    };
+  } catch (err) {
+    console.error('dbUpdate error:', err);
     throw err;
   }
 };
