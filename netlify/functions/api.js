@@ -3,7 +3,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // MongoDB connection
-const mongoUrl = process.env.MONGODB_URL || 'mongodb+srv://user:password@cluster.mongodb.net/poputchiki';
+// Берем строку подключения только из переменных окружения,
+// без захардкоженных логинов/паролей
+const mongoUrl =
+  process.env.MONGODB_URL ||
+  process.env.MONGODB_URI ||
+  'mongodb://localhost:27017/poputchiki';
 let db;
 let client;
 
@@ -97,8 +102,12 @@ function authRequired(handler) {
 
 // Main handler
 exports.handler = async (event, context) => {
-  const { httpMethod, path, body, headers } = event;
-  const pathParts = path.split('/').filter(p => p);
+  const { httpMethod, path, body } = event;
+  // Приводим путь к виду без /.netlify/functions/api
+  const relativePath = path
+    .replace(/^\/\.netlify\/functions\/api/, '')
+    .replace(/^\/+/, '');
+  const pathParts = relativePath.split('/').filter(p => p);
   
   // CORS headers
   const corsHeaders = {
@@ -124,10 +133,10 @@ exports.handler = async (event, context) => {
     }
 
     // Route handling
-    if (pathParts[0] === 'api') {
-      switch (pathParts[1]) {
+    if (pathParts.length > 0) {
+      switch (pathParts[0]) {
         case 'auth':
-          if (pathParts[2] === 'register') {
+          if (pathParts[1] === 'register') {
             // Registration
             const { name, email, password } = requestBody || {};
             
@@ -167,7 +176,7 @@ exports.handler = async (event, context) => {
             };
           }
           
-          if (pathParts[2] === 'login') {
+          if (pathParts[1] === 'login') {
             // Login
             const { email, password } = requestBody || {};
             
@@ -229,7 +238,7 @@ exports.handler = async (event, context) => {
           };
 
         case 'user':
-          if (pathParts[2] === 'role') {
+          if (pathParts[1] === 'role') {
             // Change user role
             return authRequired(async (event) => {
               const { role } = requestBody || {};
@@ -319,7 +328,7 @@ exports.handler = async (event, context) => {
           break;
 
         case 'rides':
-          if (pathParts[2] === 'search') {
+          if (pathParts[1] === 'search') {
             // Search rides
             return authRequired(async (event) => {
               const rides = await dbAll('rides', {});
